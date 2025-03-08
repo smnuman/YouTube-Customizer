@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>YouTube Customizer</title>
+  <style>
+    body {
+      width: 250px;
+      padding: 15px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      margin: 0;
+    }
+    h3 {
+      margin: 0 0 15px;
+      font-size: 18px;
+      color: #2c3e50;
+    }
+    label {
+      display: block;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    select, input[type="number"] {
+      width: 100%;
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    input[type="checkbox"] {
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    #defaultLink {
+      display: block;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #7f8c8d;
+      text-decoration: none;
+      text-align: center;
+    }
+    #defaultLink:hover {
+      color: #3498db;
+      text-decoration: underline;
+    }
+    #status {
+      font-size: 12px;
+      margin-top: 10px;
+      text-align: center;
+      color: #27ae60;
+    }
+  </style>
+</head>
+<body>
+  <h3>YouTube Customizer</h3>
+  
+  <label>
+    Video Quality:
+    <select id="quality">
+      <option value="highres">Highest Available</option>
+      <option value="hd1080">1080p</option>
+      <option value="hd720">720p</option>
+      <option value="large">480p</option>
+    </select>
+  </label>
+
+  <label>
+    Playback Speed:
+    <input type="number" id="speed" min="0.25" max="4" step="0.25" value="1.5">
+  </label>
+
+  <label>
+    <input type="checkbox" id="cinematic" checked>
+    Enable Cinematic Mode
+  </label>
+
+  <button id="save">Apply Settings</button>
+  <a href="#" id="defaultLink">Set as Default</a>
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
