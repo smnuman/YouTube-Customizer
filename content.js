@@ -201,4 +201,85 @@ const throttledGetCurrentSettings = throttle(async () => {
 function getCurrentSettings() {
   const video = document.querySelector('video');
   const player = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
-  i
+  if (!video || !player) return cachedSettings;
+
+  return {
+    quality: cachedSettings.quality,
+    speed: video.playbackRate,
+    cinematic: player.classList.contains('ytp-size-theater')
+  };
+}
+
+// Apply default settings on page load
+function applyDefaultSettings() {
+  chrome.storage.sync.get(['defaultQuality', 'defaultSpeed', 'defaultCinematic'], (data) => {
+    const settings = {
+      quality: data.defaultQuality || 'highres',
+      speed: data.defaultSpeed || 1.5,
+      cinematic: data.defaultCinematic !== undefined ? data.defaultCinematic : true
+    };
+    throttledApplySettings(settings);
+  });
+}
+
+// Sync settings only when explicitly called
+let lastSettings = null;
+async function syncSettings() {
+  const current = await throttledGetCurrentSettings();
+  if (!current) return;
+
+  const hasChanged = !lastSettings || 
+    lastSettings.quality !== current.quality || 
+    lastSettings.speed !== current.speed || 
+    lastSettings.cinematic !== current.cinematic;
+
+  if (hasChanged && isContextValid) {
+    if (!chrome.runtime?.id) {
+      console.error('Cannot sync settings: Extension context invalidated');
+      return;
+    }
+
+    chrome.storage.sync.set({
+      tempQuality: current.quality,
+      tempSpeed: current.speed,
+      tempCinematic: current.cinematic
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Storage sync error:', chrome.runtime.lastError.message);
+      } else {
+        lastSettings = { ...current };
+      }
+    });
+  }
+}
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'ping') {
+    sendResponse({ status: 'pong' });
+  } else if (message.action === 'applySettings') {
+    chrome.storage.sync.get(['tempQuality', 'tempSpeed', 'tempCinematic'], (data) => {
+      const settings = {
+        quality: data.tempQuality,
+        speed: data.tempSpeed,
+        cinematic: data.tempCinematic
+      };
+      throttledApplySettings(settings).then(() => {
+        syncSettings();
+        sendResponse({ status: 'applied' });
+      });
+    });
+    return true;
+  } else if (message.action === 'getCurrentSettings') {
+    sendResponse(getCurrentSettings());
+  }
+});
+
+// Apply default settings on page load
+window.addEventListener('load', applyDefaultSettings);
+
+// Monitor for context invalidation
+chrome.runtime.onSuspend.addListener(() => {
+  console.log('Extension context is being invalidated');
+  isContextValid = false;
+});
