@@ -5,6 +5,58 @@ function updateStatus(message, color = '#27ae60') {
   statusDiv.style.color = color;
 }
 
+// Check if content script is ready by sending a ping message
+function checkContentScriptReady(tabId, maxAttempts = 5, delay = 1000) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+
+    function ping() {
+      chrome.tabs.sendMessage(tabId, { action: 'ping' }, { frameId: 0 }, (response) => {
+        if (chrome.runtime.lastError) {
+          attempts++;
+          if (attempts < maxAttempts) {
+            console.log(`Ping attempt ${attempts} failed: ${chrome.runtime.lastError.message}`);
+            setTimeout(ping, delay);
+          } else {
+            reject(new Error('Content script not ready: ' + chrome.runtime.lastError.message));
+          }
+        } else if (response && response.status === 'pong') {
+          resolve();
+        } else {
+          reject(new Error('Unexpected response from content script'));
+        }
+      });
+    }
+
+    ping();
+  });
+}
+
+// Retry mechanism for sending messages
+function sendMessageWithRetry(tabId, message, options, maxRetries = 5, retryDelay = 1000) {
+  let attempts = 0;
+
+  function attemptSend() {
+    chrome.tabs.sendMessage(tabId, message, options, (response) => {
+      if (chrome.runtime.lastError) {
+        attempts++;
+        if (attempts < maxRetries) {
+          console.log(`Retry attempt ${attempts} due to: ${chrome.runtime.lastError.message}`);
+          setTimeout(attemptSend, retryDelay);
+        } else {
+          updateStatus(`Error applying settings: ${chrome.runtime.lastError.message}`, '#e74c3c');
+        }
+      } else if (response && response.status === 'applied') {
+        updateStatus('Settings applied!');
+      } else {
+        updateStatus('No response from content script', '#e74c3c');
+      }
+    });
+  }
+
+  attemptSend();
+}
+
 // Apply settings to current tab
 document.getElementById('save').addEventListener('click', () => {
   const quality = document.getElementById('quality').value;
@@ -15,20 +67,14 @@ document.getElementById('save').addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const url = tabs[0].url;
       if (url.includes('youtube.com')) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          { action: 'applySettings' },
-          { frameId: 0 }, // Ensure message targets the main frame
-          (response) => {
-            if (chrome.runtime.lastError) {
-              updateStatus('Error applying settings: ' + chrome.runtime.lastError.message, '#e74c3c');
-            } else if (response && response.status === 'applied') {
-              updateStatus('Settings applied!');
-            } else {
-              updateStatus('No response from content script', '#e74c3c');
-            }
-          }
-        );
+        // Check if content script is ready before sending the message
+        checkContentScriptReady(tabs[0].id)
+          .then(() => {
+            sendMessageWithRetry(tabs[0].id, { action: 'applySettings' }, { frameId: 0 });
+          })
+          .catch((error) => {
+            updateStatus(`Failed to connect: ${error.message}`, '#e74c3c');
+          });
       } else {
         updateStatus('Not a YouTube page!', '#e74c3c');
       }
@@ -38,7 +84,7 @@ document.getElementById('save').addEventListener('click', () => {
 
 // Set current settings as defaults
 document.getElementById('defaultLink').addEventListener('click', (e) => {
-  e.preventDefault(); // Prevent link default behavior
+  e.preventDefault();
   const quality = document.getElementById('quality').value;
   const speed = parseFloat(document.getElementById('speed').value);
   const cinematic = document.getElementById('cinematic').checked;
@@ -52,38 +98,24 @@ document.getElementById('defaultLink').addEventListener('click', (e) => {
 chrome.storage.sync.get(
   ['defaultQuality', 'defaultSpeed', 'defaultCinematic', 'tempQuality', 'tempSpeed', 'tempCinematic'],
   (data) => {
-    // Load defaults first (speed defaults to 1.5)
     const quality = data.defaultQuality || 'highres';
     const speed = data.defaultSpeed || 1.5;
     const cinematic = data.defaultCinematic !== undefined ? data.defaultCinematic : true;
 
-    // Override with temporary settings if they exist
     document.getElementById('quality').value = data.tempQuality || quality;
     document.getElementById('speed').value = data.tempSpeed || speed;
     document.getElementById('cinematic').checked = data.tempCinematic !== undefined ? data.tempCinematic : cinematic;
 
-    // Sync with current YouTube settings
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const url = tabs[0].url;
       if (url.includes('youtube.com')) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          { action: 'getCurrentSettings' },
-          { frameId: 0 },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              console.log('Sync error: ', chrome.runtime.lastError.message);
-            } else if (response) {
-              document.getElementById('quality').value = response.quality || data.tempQuality || quality;
-              document.getElementById('speed').value = response.speed || data.tempSpeed || speed;
-              document.getElementById('cinematic').checked = 
-                response.cinematic !== undefined ? response.cinematic : (data.tempCinematic !== undefined ? data.tempCinematic : cinematic);
-              updateStatus('Synced with YouTube');
-            } else {
-              updateStatus('Unable to sync with YouTube', '#e74c3c');
-            }
-          }
-        );
+        checkContentScriptReady(tabs[0].id)
+          .then(() => {
+            sendMessageWithRetry(tabs[0].id, { action: 'getCurrentSettings' }, { frameId: 0 }, 5, 1000);
+          })
+          .catch((error) => {
+            updateStatus(`Failed to sync: ${error.message}`, '#e74c3c');
+          });
       }
     });
   }
